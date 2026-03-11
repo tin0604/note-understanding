@@ -1,7 +1,7 @@
 import streamlit as st
 import base64
 from PIL import Image
-from openai import OpenAI
+import openai  # 修改导入方式
 import io
 
 # ---------- 页面配置 ----------
@@ -27,8 +27,17 @@ except Exception as e:
 
 MODEL_NAME = "ernie-4.5-vl-28b-a3b-thinking"
 
-# 初始化 OpenAI 客户端
-client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+# ---------- 初始化 OpenAI 客户端（兼容模式）----------
+try:
+    # 方法1：使用旧版 API（兼容性最好）
+    openai.api_key = API_KEY
+    openai.api_base = BASE_URL
+    
+    # 测试连接
+    st.success("✅ API 配置成功！")
+except Exception as e:
+    st.error(f"❌ API 配置失败: {str(e)}")
+    st.stop()
 
 # ---------- 图片编码函数 ----------
 def encode_image_to_base64(image: Image.Image) -> str:
@@ -39,6 +48,28 @@ def encode_image_to_base64(image: Image.Image) -> str:
         image = image.convert('RGB')
     image.save(buffered, format="JPEG", quality=95)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+# ---------- 调用 ERNIE 的函数 ----------
+def call_ernie_model(image_base64, prompt):
+    """使用旧版 API 调用 ERNIE 模型"""
+    try:
+        response = openai.ChatCompletion.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                    ]
+                }
+            ],
+            timeout=60
+        )
+        return response
+    except Exception as e:
+        st.error(f"API 调用失败: {str(e)}")
+        return None
 
 # ---------- UI 布局 ----------
 # 创建两列布局
@@ -110,33 +141,28 @@ if process_button:
         st.write("3. 调用百度文心 ERNIE 模型...")
         
         # 调用 ERNIE 模型
-        try:
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt_text},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                        ]
-                    }
-                ],
-                stream=False,
-                timeout=60
-            )
-            
-            status.update(label="✅ 处理完成!", state="complete")
-            
-        except Exception as e:
+        response = call_ernie_model(img_base64, prompt_text)
+        
+        if response is None:
             status.update(label="❌ 处理失败", state="error")
-            st.error(f"调用失败: {str(e)}")
             st.stop()
+        
+        status.update(label="✅ 处理完成!", state="complete")
     
     # 解析响应
-    response = completion.choices[0].message
-    reasoning = getattr(response, 'reasoning_content', None)
-    content = response.content
+    try:
+        # 兼容不同版本的返回格式
+        if hasattr(response, 'choices'):
+            message = response.choices[0].message
+            reasoning = getattr(message, 'reasoning_content', None)
+            content = message.get('content', '') if hasattr(message, 'get') else message.content
+        else:
+            # 旧版格式
+            reasoning = response.get('reasoning_content')
+            content = response['choices'][0]['message']['content']
+    except Exception as e:
+        st.error(f"解析响应失败: {str(e)}")
+        st.stop()
     
     # 显示结果
     st.success("✨ 理解完成！")
@@ -147,7 +173,7 @@ if process_button:
     with result_col1:
         if reasoning:
             with st.expander("🧠 AI 思考过程", expanded=False):
-                st.markdown(reasoning)
+                st.markdown(str(reasoning))
     
     with result_col2:
         # 下载按钮
@@ -155,7 +181,7 @@ if process_button:
             result_text = f"【思考过程】\n{reasoning if reasoning else '无'}\n\n【整理结果】\n{content}"
             st.download_button(
                 label="📥 下载结果",
-                data=result_text,
+                data=result_text.encode('utf-8'),
                 file_name="笔记整理结果.txt",
                 mime="text/plain",
                 use_container_width=True
