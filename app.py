@@ -1,7 +1,7 @@
 import streamlit as st
 import base64
 from PIL import Image
-import openai  # 修改导入方式
+import openai
 import io
 
 # ---------- 页面配置 ----------
@@ -27,13 +27,10 @@ except Exception as e:
 
 MODEL_NAME = "ernie-4.5-vl-28b-a3b-thinking"
 
-# ---------- 初始化 OpenAI 客户端（兼容模式）----------
+# ---------- 初始化 OpenAI 客户端 ----------
 try:
-    # 方法1：使用旧版 API（兼容性最好）
     openai.api_key = API_KEY
     openai.api_base = BASE_URL
-    
-    # 测试连接
     st.success("✅ API 配置成功！")
 except Exception as e:
     st.error(f"❌ API 配置失败: {str(e)}")
@@ -43,7 +40,6 @@ except Exception as e:
 def encode_image_to_base64(image: Image.Image) -> str:
     """将 PIL Image 转换为 base64 字符串"""
     buffered = io.BytesIO()
-    # 转换为 RGB 模式（确保 JPEG 保存正常）
     if image.mode != 'RGB':
         image = image.convert('RGB')
     image.save(buffered, format="JPEG", quality=95)
@@ -51,7 +47,7 @@ def encode_image_to_base64(image: Image.Image) -> str:
 
 # ---------- 调用 ERNIE 的函数 ----------
 def call_ernie_model(image_base64, prompt):
-    """使用旧版 API 调用 ERNIE 模型"""
+    """调用 ERNIE 模型"""
     try:
         response = openai.ChatCompletion.create(
             model=MODEL_NAME,
@@ -72,7 +68,6 @@ def call_ernie_model(image_base64, prompt):
         return None
 
 # ---------- UI 布局 ----------
-# 创建两列布局
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -83,14 +78,13 @@ with col1:
         help="支持手机拍照或电脑上传"
     )
     
-    # 显示上传的图片（如果有）
+    # 修复：将 use_container_width 改为 use_column_width
     if uploaded_file is not None:
-        st.image(uploaded_file, caption="已上传图片", use_container_width=True)
+        st.image(uploaded_file, caption="已上传图片", use_column_width=True)
 
 with col2:
     st.subheader("✏️ 你的需求")
     
-    # 预设几个常用模板
     template_options = [
         "自定义输入",
         "整理期末考试题型和范围",
@@ -105,11 +99,9 @@ with col2:
         prompt_text = st.text_area(
             "输入你的具体需求",
             value="这是我课上做的笔记，请帮我整理主要内容、重点和难点",
-            height=150,
-            help="可以详细描述你想要从笔记中提取什么信息"
+            height=150
         )
     else:
-        # 根据选择的模板自动填充
         template_map = {
             "整理期末考试题型和范围": "这是我课上做的关于'期末考试内容'的笔记，由于是写在草稿本上的，可能会有些草稿的干扰，请帮我整理一下期末考试的题型和范围，用清晰的格式列出",
             "提取笔记中的重点知识点": "请提取这张笔记图片中的重点知识点，用要点形式列出，并标注重要性等级",
@@ -130,7 +122,6 @@ if process_button:
         st.warning("请先上传一张图片")
         st.stop()
     
-    # 显示处理中状态
     with st.status("🔄 处理中...", expanded=True) as status:
         st.write("1. 读取图片...")
         image = Image.open(uploaded_file)
@@ -139,8 +130,6 @@ if process_button:
         img_base64 = encode_image_to_base64(image)
         
         st.write("3. 调用百度文心 ERNIE 模型...")
-        
-        # 调用 ERNIE 模型
         response = call_ernie_model(img_base64, prompt_text)
         
         if response is None:
@@ -151,13 +140,11 @@ if process_button:
     
     # 解析响应
     try:
-        # 兼容不同版本的返回格式
         if hasattr(response, 'choices'):
             message = response.choices[0].message
             reasoning = getattr(message, 'reasoning_content', None)
             content = message.get('content', '') if hasattr(message, 'get') else message.content
         else:
-            # 旧版格式
             reasoning = response.get('reasoning_content')
             content = response['choices'][0]['message']['content']
     except Exception as e:
@@ -167,7 +154,6 @@ if process_button:
     # 显示结果
     st.success("✨ 理解完成！")
     
-    # 创建两列显示结果
     result_col1, result_col2 = st.columns([1, 1])
     
     with result_col1:
@@ -176,7 +162,6 @@ if process_button:
                 st.markdown(str(reasoning))
     
     with result_col2:
-        # 下载按钮
         if content:
             result_text = f"【思考过程】\n{reasoning if reasoning else '无'}\n\n【整理结果】\n{content}"
             st.download_button(
@@ -187,15 +172,16 @@ if process_button:
                 use_container_width=True
             )
     
-    # 主结果展示
     st.subheader("📄 整理结果")
     
-    # 尝试检测是否为 Markdown 格式
-    if content and (content.strip().startswith('#') or '**' in content or '- ' in content or '1.' in content):
-        st.markdown(content)
+    # 修复：确保 content 不为空
+    if content:
+        if content.strip().startswith('#') or '**' in content or '- ' in content or '1.' in content:
+            st.markdown(content)
+        else:
+            st.text_area("", value=content, height=300, disabled=True)
     else:
-        # 否则用带边框的文本框显示
-        st.text_area("", value=content if content else "无结果返回", height=300, disabled=True)
+        st.warning("无结果返回")
 
 # ---------- 页脚 ----------
 st.divider()
@@ -206,7 +192,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 侧边栏添加说明
+# 侧边栏
 with st.sidebar:
     st.header("📋 使用说明")
     st.markdown("""
@@ -217,16 +203,4 @@ with st.sidebar:
     5. **下载保存**：可将结果保存为文本文件
     
     **支持格式**：JPG、JPEG、PNG
-    
-    **温馨提示**：清晰的照片会获得更好的识别效果
-    """)
-    
-    st.divider()
-    
-    st.header("📱 手机使用")
-    st.markdown("""
-    - 点击上传按钮直接拍照
-    - 从相册选择已有照片
-    - 横屏拍摄效果更好
-    - 确保笔记内容清晰可见
     """)
