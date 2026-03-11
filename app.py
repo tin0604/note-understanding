@@ -18,7 +18,6 @@ st.markdown("""
 """)
 
 # ---------- 从 secrets 读取 API 配置 ----------
-# 注意：需要在 Streamlit Cloud 的 Advanced settings 中设置 secrets
 try:
     API_KEY = st.secrets["BAIDU_API_KEY"]
     BASE_URL = st.secrets.get("BAIDU_BASE_URL", "https://aistudio.baidu.com/llm/lmapi/v3")
@@ -38,7 +37,7 @@ def encode_image_to_base64(image: Image.Image) -> str:
     # 转换为 RGB 模式（确保 JPEG 保存正常）
     if image.mode != 'RGB':
         image = image.convert('RGB')
-    image.save(buffered, format="JPEG")
+    image.save(buffered, format="JPEG", quality=95)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 # ---------- UI 布局 ----------
@@ -124,7 +123,7 @@ if process_button:
                     }
                 ],
                 stream=False,
-                timeout=60  # 60秒超时
+                timeout=60
             )
             
             status.update(label="✅ 处理完成!", state="complete")
@@ -165,18 +164,12 @@ if process_button:
     # 主结果展示
     st.subheader("📄 整理结果")
     
-    # 尝试检测是否为 Markdown 格式，如果是就用 Markdown 渲染
-    if content.strip().startswith('#') or '**' in content or '- ' in content:
+    # 尝试检测是否为 Markdown 格式
+    if content and (content.strip().startswith('#') or '**' in content or '- ' in content or '1.' in content):
         st.markdown(content)
     else:
         # 否则用带边框的文本框显示
-        st.text_area("", value=content, height=300, disabled=True)
-    
-    # 添加分隔线
-    st.divider()
-    
-    # 显示提示
-    st.info("💡 提示：点击下载按钮可保存结果为文本文件")
+        st.text_area("", value=content if content else "无结果返回", height=300, disabled=True)
 
 # ---------- 页脚 ----------
 st.divider()
